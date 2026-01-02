@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+google-api-python-client
+python-dotenv
+importlib-metadata
+openai
+pytest
+httpx
+
