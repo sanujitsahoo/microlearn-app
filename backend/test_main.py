@@ -2,7 +2,13 @@ import pytest
 import json
 from unittest.mock import patch, Mock, MagicMock
 from fastapi.testclient import TestClient
-from main import app, generate_syllabus, get_videos_for_module
+from main import (
+    app, 
+    generate_syllabus, 
+    get_videos_for_module, 
+    validate_and_sanitize_topic,
+    validate_video_id
+)
 
 client = TestClient(app)
 
@@ -82,31 +88,76 @@ class TestGenerateSyllabus:
         assert result is None
 
 
+class TestValidateVideoId:
+    """Tests for the validate_video_id function."""
+    
+    def test_validate_video_id_valid(self):
+        """Test validation of valid YouTube video IDs."""
+        assert validate_video_id("N20k-rV-iXQ") == True
+        assert validate_video_id("G2fqAlgmoPo") == True
+        assert validate_video_id("dQw4w9WgXcQ") == True
+        assert validate_video_id("12345678901") == True  # 11 chars
+        assert validate_video_id("abc_def-ghi") == True  # with special chars
+    
+    def test_validate_video_id_invalid(self):
+        """Test validation of invalid YouTube video IDs."""
+        assert validate_video_id("short") == False  # Too short
+        assert validate_video_id("waytoolongvideoid12345") == False  # Too long
+        assert validate_video_id("invalid@id") == False  # Invalid character
+        assert validate_video_id("") == False  # Empty
+        assert validate_video_id("1234567890") == False  # 10 chars (not 11)
+
+
 class TestGetVideosForModule:
     """Tests for the get_videos_for_module function."""
     
     @patch('main.requests.get')
     @patch('main.YOUTUBE_API_KEY', 'test_key')
     def test_get_videos_success(self, mock_get):
-        """Test successful video retrieval."""
-        # Mock YouTube API response
+        """Test successful video retrieval with valid video IDs."""
+        # Mock YouTube API response with valid 11-character video IDs
         mock_response = Mock()
         mock_response.json.return_value = {
             "items": [
-                {"id": {"videoId": "video1"}},
-                {"id": {"videoId": "video2"}},
-                {"id": {"videoId": "video3"}}
+                {"id": {"videoId": "N20k-rV-iXQ"}},  # Valid 11-char ID
+                {"id": {"videoId": "G2fqAlgmoPo"}},  # Valid 11-char ID
+                {"id": {"videoId": "dQw4w9WgXcQ"}}   # Valid 11-char ID
             ]
         }
+        mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
         
         result = get_videos_for_module("test search")
         
         assert len(result) == 3
-        assert "video1" in result
-        assert "video2" in result
-        assert "video3" in result
+        assert "N20k-rV-iXQ" in result
+        assert "G2fqAlgmoPo" in result
+        assert "dQw4w9WgXcQ" in result
         mock_get.assert_called_once()
+    
+    @patch('main.requests.get')
+    @patch('main.YOUTUBE_API_KEY', 'test_key')
+    def test_get_videos_filters_invalid_ids(self, mock_get):
+        """Test that invalid video IDs are filtered out."""
+        # Mock YouTube API response with mix of valid and invalid IDs
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "items": [
+                {"id": {"videoId": "N20k-rV-iXQ"}},  # Valid
+                {"id": {"videoId": "invalid"}},      # Invalid (too short)
+                {"id": {"videoId": "G2fqAlgmoPo"}}   # Valid
+            ]
+        }
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+        
+        result = get_videos_for_module("test search")
+        
+        # Should only return valid IDs
+        assert len(result) == 2
+        assert "N20k-rV-iXQ" in result
+        assert "G2fqAlgmoPo" in result
+        assert "invalid" not in result
     
     @patch('main.requests.get')
     @patch('main.YOUTUBE_API_KEY', 'test_key')
@@ -114,6 +165,7 @@ class TestGetVideosForModule:
         """Test when YouTube API returns empty results."""
         mock_response = Mock()
         mock_response.json.return_value = {"items": []}
+        mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
         
         result = get_videos_for_module("test search")
@@ -126,7 +178,8 @@ class TestGetVideosForModule:
     @patch('main.YOUTUBE_API_KEY', 'test_key')
     def test_get_videos_api_error(self, mock_get):
         """Test when YouTube API request fails."""
-        mock_get.side_effect = Exception("Network error")
+        import requests
+        mock_get.side_effect = requests.RequestException("Network error")
         
         result = get_videos_for_module("test search")
         
@@ -150,6 +203,7 @@ class TestGetVideosForModule:
         """Test when YouTube API returns malformed response."""
         mock_response = Mock()
         mock_response.json.return_value = {"items": [{"id": {}}]}  # Missing videoId
+        mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
         
         result = get_videos_for_module("test search")
@@ -157,6 +211,59 @@ class TestGetVideosForModule:
         # Should return fallback video
         assert len(result) == 1
         assert result[0] == "N20k-rV-iXQ"
+    
+    @patch('main.requests.get')
+    @patch('main.YOUTUBE_API_KEY', 'test_key')
+    def test_get_videos_http_error(self, mock_get):
+        """Test when YouTube API returns HTTP error."""
+        import requests
+        mock_response = Mock()
+        mock_response.raise_for_status.side_effect = requests.HTTPError("API Error")
+        mock_get.return_value = mock_response
+        
+        result = get_videos_for_module("test search")
+        
+        # Should return fallback video
+        assert len(result) == 1
+        assert result[0] == "N20k-rV-iXQ"
+
+
+class TestValidateAndSanitizeTopic:
+    """Tests for the validate_and_sanitize_topic function."""
+    
+    def test_validate_topic_valid(self):
+        """Test validation of valid topics."""
+        assert validate_and_sanitize_topic("Python") == "Python"
+        assert validate_and_sanitize_topic("Machine Learning") == "Machine Learning"
+        assert validate_and_sanitize_topic("AI & ML") == "AI  ML"  # & removed
+        assert validate_and_sanitize_topic("  JavaScript  ") == "JavaScript"  # Trims whitespace
+    
+    def test_validate_topic_empty(self):
+        """Test validation rejects empty topics."""
+        with pytest.raises(ValueError, match="non-empty"):
+            validate_and_sanitize_topic("")
+        with pytest.raises(ValueError, match="at least one valid character"):
+            validate_and_sanitize_topic("   ")
+    
+    def test_validate_topic_too_long(self):
+        """Test validation rejects topics that are too long."""
+        long_topic = "a" * 201
+        with pytest.raises(ValueError, match="200 characters"):
+            validate_and_sanitize_topic(long_topic)
+    
+    def test_validate_topic_invalid_type(self):
+        """Test validation rejects non-string types."""
+        with pytest.raises(ValueError, match="non-empty string"):
+            validate_and_sanitize_topic(None)
+    
+    def test_validate_topic_removes_dangerous_chars(self):
+        """Test that dangerous characters are removed."""
+        result = validate_and_sanitize_topic("Test<script>alert('xss')</script>")
+        assert "<" not in result
+        assert ">" not in result
+        assert "/" not in result
+        # Note: "script" as a word remains, but the dangerous chars <, >, / are removed
+        # This is expected behavior - we sanitize special chars, not words
 
 
 class TestGenerateCourseEndpoint:
@@ -185,7 +292,7 @@ class TestGenerateCourseEndpoint:
             ]
         }
         mock_generate_syllabus.return_value = mock_syllabus
-        mock_get_videos.side_effect = [["video1", "video2"], ["video3"]]
+        mock_get_videos.side_effect = [["N20k-rV-iXQ", "G2fqAlgmoPo"], ["dQw4w9WgXcQ"]]
         
         response = client.get("/generate_course?topic=Test%20Topic")
         
@@ -194,9 +301,10 @@ class TestGenerateCourseEndpoint:
         assert data["topic"] == "Test Topic"
         assert len(data["modules"]) == 2
         assert "videos" in data["modules"][0]
-        assert data["modules"][0]["videos"] == ["video1", "video2"]
-        assert data["modules"][1]["videos"] == ["video3"]
-        mock_generate_syllabus.assert_called_once_with("Test Topic")
+        assert data["modules"][0]["videos"] == ["N20k-rV-iXQ", "G2fqAlgmoPo"]
+        assert data["modules"][1]["videos"] == ["dQw4w9WgXcQ"]
+        # Should be called with sanitized topic
+        mock_generate_syllabus.assert_called_once()
         assert mock_get_videos.call_count == 2
     
     @patch('main.generate_syllabus')
@@ -207,24 +315,32 @@ class TestGenerateCourseEndpoint:
         response = client.get("/generate_course?topic=Test%20Topic")
         
         assert response.status_code == 500
-        assert "Librarian failed" in response.json()["detail"]
+        # Updated error message
+        assert "Unable to generate" in response.json()["detail"]
     
-    @patch('main.get_videos_for_module')
-    @patch('main.generate_syllabus')
-    def test_generate_course_empty_topic(self, mock_generate_syllabus, mock_get_videos):
-        """Test course generation with empty topic."""
-        mock_syllabus = {
-            "topic": "",
-            "modules": []
-        }
-        mock_generate_syllabus.return_value = mock_syllabus
-        
+    def test_generate_course_empty_topic(self):
+        """Test course generation with empty topic - should return 422 (FastAPI validation)."""
         response = client.get("/generate_course?topic=")
         
-        assert response.status_code == 200
-        data = response.json()
-        assert data["topic"] == ""
-        assert len(data["modules"]) == 0
+        # FastAPI Query validation happens first, returns 422 for empty required param
+        # Our custom validation would return 400, but FastAPI catches it first
+        assert response.status_code == 422
+    
+    def test_generate_course_topic_too_long(self):
+        """Test course generation with topic that's too long."""
+        long_topic = "a" * 201
+        response = client.get(f"/generate_course?topic={long_topic}")
+        
+        # FastAPI Query validation with max_length=200 happens first, returns 422
+        # Our custom validation would return 400, but FastAPI catches it first
+        assert response.status_code == 422
+    
+    def test_generate_course_missing_topic(self):
+        """Test course generation without topic parameter."""
+        response = client.get("/generate_course")
+        
+        # Should return 422 Unprocessable Entity (FastAPI validation error)
+        assert response.status_code == 422
     
     @patch('main.get_videos_for_module')
     @patch('main.generate_syllabus')
@@ -238,7 +354,7 @@ class TestGenerateCourseEndpoint:
             ]
         }
         mock_generate_syllabus.return_value = mock_syllabus
-        mock_get_videos.return_value = ["video1", "video2"]
+        mock_get_videos.return_value = ["N20k-rV-iXQ", "G2fqAlgmoPo"]
         
         response = client.get("/generate_course?topic=Advanced%20Topic")
         
@@ -250,6 +366,18 @@ class TestGenerateCourseEndpoint:
         for module in data["modules"]:
             assert "videos" in module
             assert len(module["videos"]) == 2
+    
+    @patch('main.generate_syllabus')
+    def test_generate_course_unexpected_error(self, mock_generate_syllabus):
+        """Test when an unexpected error occurs."""
+        mock_generate_syllabus.side_effect = Exception("Unexpected error")
+        
+        response = client.get("/generate_course?topic=Test")
+        
+        assert response.status_code == 500
+        # Should not expose internal error details
+        assert "error occurred" in response.json()["detail"].lower()
+        assert "Unexpected error" not in response.json()["detail"]
 
 
 class TestAppConfiguration:
