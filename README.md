@@ -81,7 +81,3 @@ npm run dev
 
 The backend is configured for deployment on Render using `requirements.txt`. The frontend can be deployed to any static hosting service (Vercel, Netlify, etc.).
 
-## License
-
-[Add your license here]
-
