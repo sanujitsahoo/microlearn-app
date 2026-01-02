@@ -15,6 +15,12 @@ YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 
 app = FastAPI()
 
+# 🔒 SECURITY UPDATE
+origins = [
+    "http://localhost:5173",                      # Keep this for local testing
+    "https://gomicrolearn.vercel.app/"  # <-- PASTE YOUR VERCEL URL HERE (No trailing slash)
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
