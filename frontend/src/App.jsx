@@ -21,7 +21,7 @@ function App() {
 
     setLoading(true);
     try {
-      const response = await axios.get(`http://127.0.0.1:8000/generate_course?topic=${encodeURIComponent(topicInput)}`);
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/generate_course?topic=${encodeURIComponent(topicInput)}`);
       setFullCurriculum(response.data);
       // By default, ALL modules are selected
       setActiveModules(response.data.modules);
