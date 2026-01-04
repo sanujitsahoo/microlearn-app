@@ -452,8 +452,8 @@ class TestGenerateCourseEndpoint:
     
     @patch('main.get_videos_for_module')
     @patch('main.generate_syllabus')
-    def test_generate_course_handles_all_duplicates(self, mock_generate_syllabus, mock_get_videos):
-        """Test that when all videos are duplicates, at least one video is used."""
+    def test_generate_course_strictly_no_duplicates(self, mock_generate_syllabus, mock_get_videos):
+        """Test that NO duplicates are allowed, even if it means a module has no videos."""
         mock_syllabus = {
             "topic": "Test Topic",
             "modules": [
@@ -488,10 +488,15 @@ class TestGenerateCourseEndpoint:
         assert "video1" in data["modules"][0]["videos"]
         assert "video2" in data["modules"][0]["videos"]
         
-        # Module 2 should have at least one video (edge case handling)
-        # When all are duplicates, we use the first one to ensure module isn't empty
-        assert len(data["modules"][1]["videos"]) >= 1
-        assert "video1" in data["modules"][1]["videos"]  # Uses first video when all are duplicates
+        # Module 2 should be filtered out (had no videos after duplicate removal)
+        # Modules with empty video arrays are skipped
+        assert len(data["modules"]) == 1, "Module with empty videos should be filtered out"
+        
+        # Verify no duplicates across all modules
+        all_videos = []
+        for module in data["modules"]:
+            all_videos.extend(module["videos"])
+        assert len(all_videos) == len(set(all_videos)), "Duplicate videos found"
     
     @patch('main.generate_syllabus')
     def test_generate_course_unexpected_error(self, mock_generate_syllabus):
@@ -504,6 +509,84 @@ class TestGenerateCourseEndpoint:
         # Should not expose internal error details
         assert "error occurred" in response.json()["detail"].lower()
         assert "Unexpected error" not in response.json()["detail"]
+    
+    @patch('main.get_videos_for_module')
+    @patch('main.generate_syllabus')
+    def test_generate_course_filters_empty_modules(self, mock_generate_syllabus, mock_get_videos):
+        """Test that modules with empty video arrays are filtered out."""
+        mock_syllabus = {
+            "topic": "Test Topic",
+            "modules": [
+                {
+                    "id": 1,
+                    "title": "Module 1",
+                    "description": "Test description",
+                    "search_term": "test search 1"
+                },
+                {
+                    "id": 2,
+                    "title": "Module 2",
+                    "description": "Test description 2",
+                    "search_term": "test search 2"
+                },
+                {
+                    "id": 3,
+                    "title": "Module 3",
+                    "description": "Test description 3",
+                    "search_term": "test search 3"
+                }
+            ]
+        }
+        mock_generate_syllabus.return_value = mock_syllabus
+        # Module 2 will have empty videos (all duplicates)
+        mock_get_videos.side_effect = [
+            ["video1", "video2"],  # Module 1 - gets both
+            ["video1", "video2"],  # Module 2 - all duplicates, will be empty
+            ["video3", "video4"]   # Module 3 - gets both (unique)
+        ]
+        
+        response = client.get("/generate_course?topic=Test%20Topic")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should only have 2 modules (Module 2 filtered out)
+        assert len(data["modules"]) == 2
+        
+        # Module 1 and Module 3 should be present
+        module_ids = [module["id"] for module in data["modules"]]
+        assert 1 in module_ids
+        assert 3 in module_ids
+        assert 2 not in module_ids  # Module 2 should be filtered out
+        
+        # All remaining modules should have videos
+        for module in data["modules"]:
+            assert len(module["videos"]) > 0
+    
+    @patch('main.get_videos_for_module')
+    @patch('main.generate_syllabus')
+    def test_generate_course_all_modules_empty_error(self, mock_generate_syllabus, mock_get_videos):
+        """Test that if all modules end up empty, an error is returned."""
+        mock_syllabus = {
+            "topic": "Test Topic",
+            "modules": [
+                {
+                    "id": 1,
+                    "title": "Module 1",
+                    "description": "Test description",
+                    "search_term": "test search 1"
+                }
+            ]
+        }
+        mock_generate_syllabus.return_value = mock_syllabus
+        # All videos are duplicates (edge case)
+        mock_get_videos.return_value = []
+        
+        response = client.get("/generate_course?topic=Test%20Topic")
+        
+        # Should return error if all modules are empty
+        assert response.status_code == 500
+        assert "Unable to generate curriculum" in response.json()["detail"]
 
 
 class TestAppConfiguration:
