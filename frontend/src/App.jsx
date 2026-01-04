@@ -11,6 +11,7 @@ function App() {
   const [currentModuleIndex, setCurrentModuleIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [error, setError] = useState(null);
 
   // --- HANDLERS ---
 
@@ -20,8 +21,14 @@ function App() {
     if (!topicInput.trim()) return;
 
     setLoading(true);
+    setError(null);
     try {
-      const response = await axios.get(`${import.meta.env.VITE_API_URL}/generate_course?topic=${encodeURIComponent(topicInput)}`);
+      const apiUrl = import.meta.env.VITE_API_URL;
+      if (!apiUrl) {
+        throw new Error('API URL is not configured. Please set VITE_API_URL environment variable.');
+      }
+      
+      const response = await axios.get(`${apiUrl}/generate_course?topic=${encodeURIComponent(topicInput)}`);
       setFullCurriculum(response.data);
       // By default, ALL modules are selected
       setActiveModules(response.data.modules);
@@ -29,6 +36,7 @@ function App() {
       setLoading(false);
     } catch (error) {
       console.error('Error generating course:', error);
+      setError(error.response?.data?.detail || error.message || 'Failed to generate course. Please try again.');
       setLoading(false);
     }
   };
@@ -83,6 +91,7 @@ function App() {
     return (
       <div className="landing-container">
         <h1>MicroLearn</h1>
+        <p className="landing-tagline">Master complex topics through smart scrolling.</p>
         <form onSubmit={handleTopicSubmit}>
           <input
             type="text"
@@ -95,7 +104,47 @@ function App() {
           <button type="submit" disabled={loading} className="search-btn">
             {loading ? 'Generating...' : 'Start Learning'}
           </button>
+          {error && (
+            <div className="error-message">
+              {error}
+            </div>
+          )}
         </form>
+        <button 
+          type="button" 
+          className="link-button"
+          onClick={() => setAppMode('about')}
+        >
+          How it works
+        </button>
+      </div>
+    );
+  }
+
+  // --- RENDER: ABOUT MODE ---
+  if (appMode === 'about') {
+    return (
+      <div className="about-container">
+        <h1>The MicroLearn Method</h1>
+        <img src="/diagram.jpg" alt="Chaos vs Structure" className="about-image" />
+        <div className="about-text">
+          <p>
+            MicroLearn is the missing link between the addictive nature of short-form social video and the structure of formal education.
+          </p>
+          <p>
+            We have built an AI-powered platform that transforms the chaotic ocean of content found on YouTube Shorts, Reels, and TikTok into structured, interactive curriculums.
+          </p>
+          <p>
+            Instead of getting lost in a random algorithmic feed, you simply type in a complex topic like 'Generative AI' and our AI instantly builds a personalized roadmap. It then aggregates and curates the perfect 60-second explainers from the open web for each step, allowing you to master complex concepts in 5-minute bursts.
+          </p>
+        </div>
+        <button 
+          type="button" 
+          className="search-btn"
+          onClick={() => setAppMode('landing')}
+        >
+          Start Learning
+        </button>
       </div>
     );
   }

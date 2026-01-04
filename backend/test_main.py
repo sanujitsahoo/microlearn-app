@@ -354,7 +354,14 @@ class TestGenerateCourseEndpoint:
             ]
         }
         mock_generate_syllabus.return_value = mock_syllabus
-        mock_get_videos.return_value = ["N20k-rV-iXQ", "G2fqAlgmoPo"]
+        # Each module gets different videos to avoid duplicates
+        mock_get_videos.side_effect = [
+            ["N20k-rV-iXQ", "G2fqAlgmoPo"],  # Module 1
+            ["dQw4w9WgXcQ", "jNQXAC9IVRw"],  # Module 2
+            ["9bZkp7q19f0", "kJQP7kiw5Fk"],  # Module 3
+            ["fJ9rUzIMcZQ", "EgBJmlPo8Xw"],  # Module 4
+            ["OXe1Ep5U2jg", "dQw4w9WgXcQ"]   # Module 5 (dQw4w9WgXcQ is duplicate from Module 2)
+        ]
         
         response = client.get("/generate_course?topic=Advanced%20Topic")
         
@@ -362,10 +369,129 @@ class TestGenerateCourseEndpoint:
         data = response.json()
         assert len(data["modules"]) == 5
         assert mock_get_videos.call_count == 5
+        
         # All modules should have videos
         for module in data["modules"]:
             assert "videos" in module
-            assert len(module["videos"]) == 2
+            assert len(module["videos"]) >= 1  # At least one video per module
+        
+        # Verify no duplicates across modules
+        all_videos = []
+        for module in data["modules"]:
+            all_videos.extend(module["videos"])
+        # Note: Module 5's duplicate will be filtered, so it should have 1 video
+        assert len(all_videos) == len(set(all_videos)), "Duplicate videos found across modules"
+    
+    @patch('main.get_videos_for_module')
+    @patch('main.generate_syllabus')
+    def test_generate_course_no_duplicate_videos(self, mock_generate_syllabus, mock_get_videos):
+        """Test that duplicate videos are filtered out across modules."""
+        mock_syllabus = {
+            "topic": "Test Topic",
+            "modules": [
+                {
+                    "id": 1,
+                    "title": "Module 1",
+                    "description": "Test description",
+                    "search_term": "test search 1"
+                },
+                {
+                    "id": 2,
+                    "title": "Module 2",
+                    "description": "Test description 2",
+                    "search_term": "test search 2"
+                },
+                {
+                    "id": 3,
+                    "title": "Module 3",
+                    "description": "Test description 3",
+                    "search_term": "test search 3"
+                }
+            ]
+        }
+        mock_generate_syllabus.return_value = mock_syllabus
+        # Simulate YouTube API returning overlapping videos
+        mock_get_videos.side_effect = [
+            ["video1", "video2", "video3"],  # Module 1
+            ["video2", "video4", "video5"],  # Module 2 (video2 is duplicate)
+            ["video3", "video6", "video7"]   # Module 3 (video3 is duplicate)
+        ]
+        
+        response = client.get("/generate_course?topic=Test%20Topic")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Collect all video IDs across all modules
+        all_videos = []
+        for module in data["modules"]:
+            all_videos.extend(module["videos"])
+        
+        # Check that there are no duplicates
+        assert len(all_videos) == len(set(all_videos)), "Duplicate videos found across modules"
+        
+        # Verify specific modules have expected videos (after duplicate removal)
+        module1_videos = data["modules"][0]["videos"]
+        module2_videos = data["modules"][1]["videos"]
+        module3_videos = data["modules"][2]["videos"]
+        
+        # Module 1 should have video1, video2, video3 (all new)
+        assert "video1" in module1_videos
+        assert "video2" in module1_videos
+        assert "video3" in module1_videos
+        
+        # Module 2 should NOT have video2 (duplicate), but should have video4, video5
+        assert "video2" not in module2_videos
+        assert "video4" in module2_videos
+        assert "video5" in module2_videos
+        
+        # Module 3 should NOT have video3 (duplicate), but should have video6, video7
+        assert "video3" not in module3_videos
+        assert "video6" in module3_videos
+        assert "video7" in module3_videos
+    
+    @patch('main.get_videos_for_module')
+    @patch('main.generate_syllabus')
+    def test_generate_course_handles_all_duplicates(self, mock_generate_syllabus, mock_get_videos):
+        """Test that when all videos are duplicates, at least one video is used."""
+        mock_syllabus = {
+            "topic": "Test Topic",
+            "modules": [
+                {
+                    "id": 1,
+                    "title": "Module 1",
+                    "description": "Test description",
+                    "search_term": "test search 1"
+                },
+                {
+                    "id": 2,
+                    "title": "Module 2",
+                    "description": "Test description 2",
+                    "search_term": "test search 2"
+                }
+            ]
+        }
+        mock_generate_syllabus.return_value = mock_syllabus
+        # Module 2 returns only videos that were already used in Module 1
+        mock_get_videos.side_effect = [
+            ["video1", "video2"],  # Module 1
+            ["video1", "video2"]   # Module 2 (all duplicates)
+        ]
+        
+        response = client.get("/generate_course?topic=Test%20Topic")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Module 1 should have both videos
+        assert len(data["modules"][0]["videos"]) == 2
+        assert "video1" in data["modules"][0]["videos"]
+        assert "video2" in data["modules"][0]["videos"]
+        
+        # Module 2 should have at least one video (edge case handling)
+        # When all are duplicates, we use the first one to ensure module isn't empty
+        assert len(data["modules"][1]["videos"]) >= 1
+        assert "video1" in data["modules"][1]["videos"]  # Uses first video when all are duplicates
     
     @patch('main.generate_syllabus')
     def test_generate_course_unexpected_error(self, mock_generate_syllabus):

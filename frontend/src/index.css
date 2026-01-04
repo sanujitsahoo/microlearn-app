@@ -119,8 +119,18 @@ body {
 
 .landing-container h1 {
   font-size: 3rem;
-  margin-bottom: 3rem;
+  margin-bottom: 0.5rem;
   color: #25F4EE;
+}
+
+.landing-tagline {
+  font-size: 1.1rem;
+  color: #aaa;
+  margin-bottom: 3rem;
+  font-weight: 300;
+  letter-spacing: 0.5px;
+  text-align: center;
+  line-height: 1.5;
 }
 
 .landing-container form {
@@ -169,6 +179,79 @@ body {
 .search-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.error-message {
+  color: #ff4444;
+  font-size: 0.9rem;
+  margin-top: 10px;
+  padding: 10px;
+  background: rgba(255, 68, 68, 0.1);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.link-button {
+  background: transparent;
+  border: none;
+  color: #25F4EE;
+  font-size: 0.95rem;
+  cursor: pointer;
+  padding: 10px 0;
+  margin-top: 1rem;
+  text-decoration: none;
+  transition: text-decoration 0.2s;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+/* --- ABOUT SCREEN STYLES --- */
+.about-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding-top: 3rem;
+}
+
+.about-container h1 {
+  font-size: 2.5rem;
+  color: #25F4EE;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.about-image {
+  width: 100%;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  margin-bottom: 2rem;
+}
+
+.about-text {
+  line-height: 1.6;
+  color: #ccc;
+  margin-bottom: 2rem;
+  width: 100%;
+}
+
+.about-text p {
+  margin-bottom: 1.5rem;
+}
+
+.about-text p:last-child {
+  margin-bottom: 0;
+}
+
+.about-container .search-btn {
+  margin-top: 1rem;
 }
 
 /* --- SETUP SCREEN STYLES --- */

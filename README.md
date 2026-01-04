@@ -6,6 +6,10 @@ MicroLearn is an AI-powered platform that transforms the chaotic ocean of conten
 
 **It's Duolingo for the open internet:** harnessing the high-dopamine engagement of social media to drive actual learning outcomes.
 
+![MicroLearn Diagram](frontend/public/diagram.jpg)
+
+*The MicroLearn Method: Transforming chaotic content into structured learning paths*
+
 ## Project Structure
 
 ```

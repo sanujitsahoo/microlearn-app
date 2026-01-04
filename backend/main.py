@@ -176,11 +176,27 @@ def generate_course(topic: str = Query(..., min_length=1, max_length=200)):
                 detail="Unable to generate curriculum. Please try again."
             )
 
-        # 2. Fill Syllabus with Videos
+        # 2. Fill Syllabus with Videos (ensure no duplicates across modules)
+        used_video_ids = set()  # Track videos already used across all modules
+        
         for module in syllabus.get("modules", []):
             search_term = module.get("search_term", "")
             print(f"Curating videos for: {module.get('title', 'Unknown')}...")
-            module["videos"] = get_videos_for_module(search_term)
+            
+            # Get videos for this module
+            all_videos = get_videos_for_module(search_term)
+            
+            # Filter out videos that have already been used in previous modules
+            new_videos = [video_id for video_id in all_videos if video_id not in used_video_ids]
+            
+            # If all videos were duplicates, use the first one to ensure module has at least one video
+            # (Edge case: YouTube API might return same videos for different but related searches)
+            if not new_videos and all_videos:
+                new_videos = all_videos[:1]  # Use at least one video to prevent empty modules
+            
+            # Update the used set and assign videos to module
+            used_video_ids.update(new_videos)
+            module["videos"] = new_videos
 
         return syllabus
     except ValueError as e:
